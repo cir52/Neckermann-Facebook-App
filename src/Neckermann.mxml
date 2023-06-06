@@ -1,0 +1,1057 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application xmlns="http://www.adobe.com/2006/mxml"  xmlns:fx="http://www.adobe.com/2006/mxml"
+			 xmlns:s="library://ns.adobe.com/flex/spark" 
+			 xmlns:mx="library://ns.adobe.com/flex/mx" 
+			 xmlns:valueObjects="valueObjects.*" 
+			 xmlns:artikelservice="services.artikelservice.*"
+			 xmlns:containers="net.brandonmeyer.containers.*"
+			 xmlns:qs="qs.controls.*" initialize="loadImages.send(); loadLogos.send(); "  xmlns:f="flash.filters.*" 
+			 creationComplete="init(); aktion='getArtikels'; ArtikelService.send(); " backgroundColor="#FFFFFF" 	width="100%" height="100%"
+			 > 
+	<Script>
+		<![CDATA[
+			import mx.events.DataGridEvent;
+			import mx.events.ListEvent;
+			
+			import spark.components.supportClasses.ItemRenderer;
+			import spark.skins.spark.HighlightBitmapCaptureSkin;
+		]]>
+	</Script>
+	<states>   
+		<mx:State name="logged_out" enterState="LoginPanel.visible = true; 
+				  			     				Loginbackground.visible = true; 
+				  								logout_button.enabled = false; 
+				  								dataGrid.filters=[blurF] " />
+		
+		<mx:State name="logged_in" enterState="	LoginPanel.visible=false; 
+				  								Loginbackground.visible=false; 
+				  								logout_button.enabled = true;
+				  								dataGrid.filters=[];
+				  								neuerArtikel_button.enabled= true;" />	
+	</states>
+	<fx:Script>
+		<![CDATA[
+			import flash.net.URLRequest;
+			import flash.net.navigateToURL;
+			import flash.sampler.NewObjectSample;
+			
+			import flashx.textLayout.formats.Float;
+			
+			import mx.collections.*;
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.FlexEvent;
+			import mx.events.ValidationResultEvent;
+			import mx.formatters.CurrencyFormatter;
+			import mx.rpc.events.ResultEvent;
+			import mx.states.AddChild;
+			import mx.effects.Glow;
+			
+			[Bindable] private var gewinn_checkbox_changed:Boolean;
+			[Bindable] private var ArtikelXML:XML;
+			[Bindable] public var mar: Boolean = true;
+			[Bindable] private var Ordner:String;
+			private var imageSelection:String = "";
+			private var neuerArtikelpressed:Boolean = false;
+			private var changed_color:uint = 0x3333FF;
+			[Bindable] private var unchangedcolor:uint = 0x6e0000;
+			[Bindable] private var sliderDrag:Boolean = false;
+			private var orig_ID:int; private var orig_headline:String;  private var orig_produktbild:String;  private var orig_logo:String; 
+			private var orig_infotext:String;  private var orig_preis:String;
+			private var orig_Key:int;
+			private var orig_link:String; private var orig_gewinnstatus:String;  private var orig_gewinnanzahl:int;  private var orig_gewinndauer:int;
+			private var orig_aktiv:String; 
+			
+			[Bindable] private var new_ID:int; 	[Bindable] private var new_headline:String; 	[Bindable] private var new_produktbild:String;  	
+			[Bindable] private var new_logo:String;  
+			[Bindable] private var new_infotext:String;  	[Bindable] private var new_preis:String;	 	[Bindable] private var new_link:String; 
+			[Bindable] private var new_gewinnstatus:String;  		[Bindable] private var new_gewinnmenge:int;  		
+			[Bindable] private var new_gewinnzeitraum:int; 		[Bindable]  private var new_aktiv:String; 			
+			[Bindable] private var gewinnaktion:String;
+			
+			private var artikel_changed:Boolean = false;;
+			private var selectedImage:int; 
+			[Bindable] public var src:Array;
+			[Bindable] public var images:Array;
+			[Bindable] public var logos:Array;
+			[Bindable] private var aktion:String;
+			[Bindable] public var alleArtikel:XMLList;
+			[Bindable] public var artikel:XML = <artikel>
+													 <Artikelkey></Artikelkey>;
+													 <ID></ID>;
+													 <headline></headline>;
+													 <produktbild></produktbild>;
+													 <logo></logo>;
+													 <infotext></infotext>;
+													 <preis></preis>;
+													 <link></link>;
+													 <gewinn></gewinn>;
+													 <gewinnmenge></gewinnmenge>;
+													 <gewinnzeitraum></gewinnzeitraum>;
+													 <aktiv></aktiv>;
+												 </artikel>;
+			
+			//	[Bindable] public var ImageFolder:String = "http://localhost/Neckermann/Neckermann-debug/assets/";
+			
+			//---------------------------------------------------------------------------------------------------------------------------------------------			
+			
+			private function init():void {
+				currentState="logged_out";
+				pass.addEventListener(FlexEvent.ENTER, loginklickhandler);
+				validate_Inputs("ID");
+			}
+	
+			// zurück zur Tabellenübersicht
+				
+			protected function backtotable():void			{
+				logoTextInput.text = new_logo;
+				produktbildTextInput.text = new_produktbild;
+				dataGrid.invalidateList();
+				dataGrid.invalidateDisplayList();
+				if (save_button.enabled == true ) {
+					save_button.enabled = false;
+					Alert.yesLabel = "Ja";
+					Alert.noLabel = "Nein";
+					Alert.show("Änderungen speichern?", "Speichern", Alert.YES|Alert.NO, this, alertsaveClickHandler);
+				} else {
+					artikel_changed = false;
+					eingabe_Panel.visible = false;
+					uebersicht_button.enabled = false;
+					neuerArtikel_button.enabled = true;
+				}
+			}
+			
+			// Artikel aus der Liste gewählt:
+			private function Artikel_selected():void {
+				logoTextInput.text = new_logo;
+				produktbildTextInput.text = new_produktbild;
+				iDTextInputForm.visible = true;
+				//artikel.Artikelkey = dataGrid.selectedItem[0].valueOf();
+				neuerArtikelpressed = false;
+				if (save_button.enabled == true) {
+					save_button.enabled = false;
+					Alert.yesLabel = "Ja";
+					Alert.noLabel = "Nein";
+					Alert.show("Änderungen speichern?", "Speichern", Alert.YES|Alert.NO, this, alertsaveClickHandler);
+				}
+				
+				orig_Key = artikel.Artikelkey;
+				orig_headline = artikel.headline;
+				orig_produktbild = artikel.produktbild;
+				orig_logo = artikel.logo;
+				orig_infotext = artikel.infotext;
+				orig_preis = artikel.preis;
+				orig_link = artikel.link;
+				orig_gewinnstatus = artikel.gewinn;
+				orig_gewinnanzahl = artikel.gewinnmenge;
+				orig_gewinndauer = artikel.gewinnzeitraum;
+				orig_aktiv = artikel.aktiv;
+				
+				new_ID = artikel.Artikelkey;
+				new_headline = artikel.headline;
+				new_produktbild = artikel.produktbild;
+				if (artikel.logo == "assets/spacer.png") {logoTextInput.text = "noch kein Logo gewählt";}
+				else (logoTextInput.text = new_logo = artikel.logo);
+				new_infotext = artikel.infotext;
+				new_preis = artikel.preis;
+				new_link = artikel.link;
+				new_gewinnstatus = artikel.gewinn;
+				new_gewinnmenge = artikel.gewinnmenge;
+				new_gewinnzeitraum = artikel.gewinnzeitraum;
+				new_aktiv = artikel.aktiv;
+				
+				//artikel.ID = artikel.Key;
+				//iDTextInput.setStyle("color",unchangedcolor);
+				headlineTextInput.setStyle("color",unchangedcolor);
+				produktbildTextInput.setStyle("color",unchangedcolor);
+				logoTextInput.setStyle("color",unchangedcolor);
+				infotextTextInput.setStyle("color",unchangedcolor);
+				preisTextInput.setStyle("color",unchangedcolor); 
+				linkTextInput.setStyle("color",unchangedcolor);
+				gewinn_checkbox.setStyle("color",unchangedcolor);
+				gewinnmengeTextInput.setStyle("color",unchangedcolor);
+				gewinnzeitraumTextInput.setStyle("color",unchangedcolor);
+				
+				//iDTextInputForm.setStyle("color", 0x444444); 
+				headlineForm.setStyle("color", 0x444444); 
+				produktbildForm.setStyle("color", 0x444444); 
+				logoForm.setStyle("color", 0x444444); 
+				infotextForm.setStyle("color", 0x444444); 
+				preisForm.setStyle("color", 0x444444); 
+				linkForm.setStyle("color", 0x444444); 
+				
+				if (artikel.gewinn == "assets/yes.png") { 
+					gewinn_checkbox.selected = true;
+				}	else  gewinn_checkbox.selected = false;
+				
+				if (artikel.aktiv == "assets/aktiv.png") {				
+					aktiv_checkbox.selected = true;		
+				} 	else  aktiv_checkbox.selected = false;
+				
+				eingabe_Panel.visible = true;			//Eingabe und Vorschau aktivieren
+				save_button.enabled= false;
+				delete_button.enabled = true;
+				uebersicht_button.enabled = true;
+				neuerArtikel_button.enabled = true;
+			}
+			
+			// Speichern
+			private function save():void {
+				//artikel.ID = new_ID;
+				//	artikel.Artikelkey = orig_Key;
+				logoTextInput.text = new_logo;
+				produktbildTextInput.text = new_produktbild;
+				artikel.headline = new_headline;
+				artikel.produktbild = new_produktbild;
+				if (new_logo == "") {artikel.logo = "assets/spacer.png"; logoTextInput.text = "noch kein Logo gewählt";}
+					else artikel.logo = new_logo;
+				artikel.infotext = new_infotext;
+				artikel.preis = new_preis;
+				artikel.link = new_link; 
+				artikel.gewinn = new_gewinnstatus;
+				artikel.gewinnmenge = new_gewinnmenge;
+				artikel.gewinnzeitraum = new_gewinnzeitraum; 
+				artikel.aktiv = new_aktiv;
+				if (neuerArtikelpressed) { 	
+					aktion='createArtikel'; ArtikelService.send();
+					dataGrid.invalidateList();
+					infoLabel.text = "Der Artikel wurde hinzugefügt.";
+					infoLabel.visible = true; GlowGreen.play([infoLabel]); //infoLabel.alpha = 1;
+				} 
+				else {
+					aktion='saveArtikel'; ArtikelService.send();
+					if ((gewinn_checkbox_changed) && (gewinn_checkbox.selected)) {
+						gewinnaktion="setgewinn"; GewinnService.send();
+						gewinn_checkbox_changed = false;
+					}					
+					infoLabel.text = "Die Änderungen wurden gespeichert";
+					infoLabel.visible = true; GlowGreen.play([infoLabel]); // infoLabel.alpha = 1;
+				}
+				if ((gewinn_checkbox_changed)&& (gewinn_checkbox.enabled)) {
+					gewinnaktion = "setgewinn"; GewinnService.send();	
+					gewinn_checkbox_changed = false;
+				}
+				
+				save_button.enabled = false;
+				iDTextInput.setStyle("color",unchangedcolor);
+				headlineTextInput.setStyle("color",unchangedcolor);
+				produktbildTextInput.setStyle("color",unchangedcolor);
+				logoTextInput.setStyle("color",unchangedcolor);
+				infotextTextInput.setStyle("color",unchangedcolor);
+				preisTextInput.setStyle("color",unchangedcolor); 
+				linkTextInput.setStyle("color",unchangedcolor);
+				gewinn_checkbox.setStyle("color",unchangedcolor);
+				gewinnmengeTextInput.setStyle("color",unchangedcolor);
+				gewinnzeitraumTextInput.setStyle("color",unchangedcolor);
+				artikel_changed = false;
+				neuerArtikelpressed = false;
+				eingabe_Panel.visible=false;
+				uebersicht_button.enabled = false;
+				neuerArtikel_button.enabled = true;
+			}
+			// Event handler function for displaying the selected Alert button.
+			private function artikelEinfügen():void {
+				artikel.ID = artikel.Artikelkey;
+				artikel.headline = new_headline;
+				artikel.produktbild = new_produktbild;
+	       		artikel.logo = new_logo;
+				artikel.infotext = new_infotext;
+				artikel.preis = new_preis;
+				artikel.link = new_link; 
+				artikel.gewinn = new_gewinnstatus;
+				if (new_gewinnstatus == "assets/yes.png") {
+					gewinnaktion = "setgewinn"; GewinnService.send(); }
+				artikel.gewinnmenge = new_gewinnmenge;
+				artikel.gewinnzeitraum = new_gewinnzeitraum; 
+				artikel.aktiv = new_aktiv; 
+				aktion="createArtikel"; ArtikelService.send();
+				if ((gewinn_checkbox_changed)&& (gewinn_checkbox.enabled)) {
+					gewinnaktion = "setgewinn"; GewinnService.send();	
+					gewinn_checkbox_changed = false;
+				}	           			
+				
+				neuerArtikel_button.enabled = true;
+				infoLabel.text = "Der Artikel wurde hinzugefügt.";
+				infoLabel.visible = true; GlowGreen.play([infoLabel]);
+				
+				
+				artikel.ID = artikel.Artikelkey;
+				artikel.headline = orig_headline;
+				artikel.produktbild = orig_produktbild;
+				artikel.logo = orig_logo;
+				artikel.infotext = orig_infotext;
+				artikel.preis = orig_preis;
+				artikel.link = orig_link; 
+				artikel.gewinn = orig_gewinnstatus;
+				artikel.gewinnmenge = orig_gewinnanzahl;
+				artikel.gewinnzeitraum = orig_gewinndauer; 
+				artikel.aktiv = orig_aktiv;
+				neuerArtikel();
+			}		
+			
+			private function neuerArtikel():void {
+				dataGrid.selectedItem=null;
+				//	iDTextInputForm.setStyle("color", 0xFF0000);
+				headlineForm.setStyle("color", 0xFF0000); 
+				produktbildForm.setStyle("color", 0xFF0000); 
+				//logoForm.setStyle("color", 0xFF0000); 
+				infotextForm.setStyle("color", 0xFF0000); 
+				preisForm.setStyle("color", 0xFF0000); 
+				linkForm.setStyle("color", 0xFF0000); 	
+				var temp:int;
+				temp = artikel.Artikelkey;
+				
+				new_headline = "neuer Artikel";
+				new_produktbild =  "assets/Produktspacer.png";
+				produktbildTextInput.text = "noch kein Produktbild gewählt";
+				new_logo = "assets/spacer.png"; 
+				logoTextInput.text = "noch kein Logo gewählt";
+				new_infotext = ""; 
+				new_preis = "";
+				new_link = "";
+				new_gewinnstatus = "assets/no.png"; 
+				gewinn_checkbox.selected=false;
+				new_gewinnmenge = 1;
+				new_gewinnzeitraum = 7;
+				new_aktiv = "assets/aktiv.png";
+				aktiv_checkbox.selected=true;
+				//	artikel.ID = "wird automatisch erzeugt";
+				new_ID = artikel.ID;
+				iDTextInputForm.visible =false;
+				artikel_changed = false;
+				neuerArtikel_button.enabled = false;
+				//	artikelEinfügen_button.enabled = false;
+				delete_button.enabled= false;
+				save_button.enabled = false;
+				eingabe_Panel.visible = true;
+				uebersicht_button.enabled = true;
+			}
+			protected function delete_clickHandler(event:MouseEvent):void			{
+				Alert.yesLabel = "Ja";
+				Alert.noLabel = "Nein";
+				Alert.show("Den Artikel wirklich löschen?", "Artikel löschen", Alert.YES|Alert.NO, this, alertClickHandler);
+			}
+			
+			private function alertClickHandler(evt:CloseEvent):void {
+				if (evt.detail == Alert.YES) {
+					artikel.Artikelkey = new_ID;
+					aktion="deleteArtikel"; ArtikelService.send();
+					
+					artikel_changed = false;
+					delete_button.enabled = false;
+					save_button.enabled = false;
+					backtotable();
+				} 
+			}					
+			private function validate_Inputs(str:String):void {
+				var val:Boolean = true;
+				switch (str) {	/*case 	"ID":		new_ID = int(iDTextInput.text); 
+					iDTextInput.setStyle("color",changed_color); artikel_geändert();
+					if ((iDTextInput.text == '' ) || (int(iDTextInput.text) <1) || (!validateID())) 	 {
+					iDTextInputForm.setStyle("color", 0xFF0000);
+					val=false;
+					} else { iDTextInputForm.setStyle("color", 0x444444);  }
+					break;*/
+					case 	"headline": 	headlineTextInput.setStyle("color",changed_color); artikel_changed=true;
+						new_headline = headlineTextInput.text;
+						break;
+					case 	"headline_prev": 	headlineTextInput.setStyle("color",changed_color); artikel_changed=true;
+						new_headline = headline_prev.text;
+						break;
+					case 	"produktbild": produktbildTextInput.setStyle("color",changed_color);  artikel_changed=true;
+						new_produktbild=produktbildTextInput.text;
+						break;
+					case 	"logo":	 logoTextInput.setStyle("color",changed_color);  artikel_changed=true;
+						new_logo=logoTextInput.text;
+						break;
+					case 	"infotext": infotextTextInput.setStyle("color",changed_color);  artikel_changed=true;
+						new_infotext=infotextTextInput.text;
+						break;
+					case 	"infotext_prev": infotextTextInput.setStyle("color",changed_color);  artikel_changed=true;
+						new_infotext=infotext_prev.text;
+						break;
+					case 	"preis": preisTextInput.setStyle("color",changed_color);   artikel_changed=true;
+						new_preis = formatter.format(preisTextInput.text);					
+						break;
+					case 	"preis_prev": preisTextInput.setStyle("color",changed_color);   artikel_changed=true;
+						new_preis = formatter.format(preis_prev.text);					
+						break;
+
+					case 	"link": 	linkTextInput.setStyle("color",changed_color); artikel_geändert(); artikel_changed=true;
+						new_link=linkTextInput.text;
+						
+						break;
+					case 	"gewinnstatus":  gewinn_checkbox.setStyle("color",changed_color);  artikel_changed=true;
+						break;
+					case 	"gewinnmenge": gewinn_checkbox_changed=true; gewinnmengeTextInput.setStyle("color",changed_color);   artikel_changed=true;
+						new_gewinnmenge=int(gewinnmengeTextInput.text); 
+						
+						break;
+					case 	"gewinnzeitraum":gewinn_checkbox_changed=true; gewinnzeitraumTextInput.setStyle("color",changed_color);   artikel_changed=true;
+						new_gewinnzeitraum=int(gewinnzeitraumTextInput.text);
+						break;
+				}
+				if (headlineTextInput.text == '' ) {
+					headlineForm.setStyle("color", 0xFF0000);
+					val=false;
+				} else { headlineForm.setStyle("color", 0x444444); }
+				if (preisTextInput.text == '' ) {
+					preisForm.setStyle("color", 0xFF0000); 
+					val=false;
+				}  else { preisForm.setStyle("color", 0x444444); }
+				if (produktbildTextInput.text == '' ) {
+					produktbildForm.setStyle("color", 0xFF0000);   
+					val=false;
+				}	else { produktbildForm.setStyle("color", 0x444444); }
+				if (logoTextInput.text == '')  {
+					new_logo = 'assets/spacer.png';
+				}  else {logoForm.setStyle("color", 0x444444); }
+				if (infotextTextInput.text == '' ) {
+					infotextForm.setStyle("color", 0xFF0000);
+					val=false;
+				}  else { 	infotextForm.setStyle("color", 0x444444); }
+				if (linkTextInput.text == '' ) {
+					linkForm.setStyle("color", 0xFF0000); 
+					val=false;
+				}  else { linkForm.setStyle("color", 0x444444); }
+				if (gewinnmengeTextInput.text == '') {
+					new_gewinnmenge = 0;
+				}		
+				if (gewinnzeitraumTextInput.text == '' ) {
+					new_gewinnzeitraum = 0; 		
+				}
+				if ((val)&&(artikel_changed)) {		//	if (validateID()) { 
+					//	artikelEinfügen_button.enabled = true;
+					save_button.enabled = true;
+					if (!neuerArtikelpressed) { delete_button.enabled = true; }
+					// }				else { artikelEinfügen_button.enabled = false; }
+				} else { save_button.enabled = false;
+					//		artikelEinfügen_button.enabled = false;}
+				}			
+			}
+						
+			private function alertsaveClickHandler(evt:CloseEvent):void {
+				if (evt.detail == Alert.YES) {
+					save();
+				} 
+			}	
+			protected function dataGrid_creationCompleteHandler(event:FlexEvent):void			{
+				dataGrid.dispatchEvent(new DataGridEvent(DataGridEvent.HEADER_RELEASE,  false,true,0,null,0,null,null,0));
+				infoLabel.visible= true;
+			}
+			private function übersicht_buttonhandler(ev:Event): void  {
+				backtotable();
+			}			
+			private function loginklickhandler(ev:Event): void  {
+				loginservice.send(); 
+			}
+			private function logoutklickhandler(ev:MouseEvent):void {
+				logoutservice.send(); uebersicht_button.enabled = false;
+				neuerArtikel_button.enabled=false; 
+				currentState = "logged_out";
+				pass.text = "";
+				eingabe_Panel.visible = false;
+			}
+			
+			protected function artikelEinfügen_clickHandler(event:MouseEvent):void	{		
+				artikelEinfügen();  neuerArtikelpressed=false;
+			}
+			protected function Save_clickHandler(event:MouseEvent):void			{
+				save_button.enabled = false; save();	
+			}
+			
+			private function onresult(ev:ResultEvent): void  {
+				if (ev.result.status ==  false) {   
+					Alert.show("Login fehlgeschlagen...");
+				} else { 
+					currentState = "logged_in";  
+			}}  
+ 
+			private function gewinnserviceresult(ev:ResultEvent):void {
+				//infoLabel.text = ev.result.gewinn as XMLList;
+				//infoLabel.visible = true;
+			}   
+			   
+			private function artikelserviceresult(ev:ResultEvent):void {
+
+				if (aktion == "getArtikels") {	
+					alleArtikel = ev.result.artikel as XMLList;
+				}				    
+				if (aktion == "deleteArtikel") {
+					aktion="getArtikels"; ArtikelService.send();
+				}
+				if (aktion == "saveArtikel") {
+					aktion="getArtikels"; ArtikelService.send();
+					dataGrid.invalidateDisplayList();
+					dataGrid.invalidateList();
+				}
+				if (aktion == "createArtikel") {
+					aktion="getArtikels"; ArtikelService.send();
+					dataGrid.invalidateDisplayList();
+					dataGrid.invalidateList();
+				}
+			}
+			private function  resultImages(ev:ResultEvent):void
+			{	var images2:Array = [];
+				for each(var temp:String in ev.result.bild)	{
+					var imageURL:String = "produktbilder/"+temp; 
+					images2.push(imageURL);
+				}  	this.images =  images2;
+			}		
+			
+			private function  resultLogos(ev:ResultEvent):void
+			{	var logos2:Array = [];
+				for each(var temp:String in ev.result.bild)	{
+					var logoURL:String = "logos/"+temp; 
+					logos2.push(logoURL);
+				}  	this.logos =  logos2;
+			}		 
+			private function galerie_on(ev:MouseEvent):void {
+				eingabe_Panel.visible = false;
+				bildercanvas.visible = true; 
+				imageSelection = ev.currentTarget.id.toString();
+				
+				if ((imageSelection == "produkt" )||(imageSelection == "produktbild_prev" )) {
+					artikel.produktbild = new_produktbild = images[selectedImage]; artikel_geändert();
+					produktbildTextInput.setStyle("color",changed_color);  
+				}
+				if ((imageSelection == "logo")||(imageSelection == "logo_prev")) {
+					artikel.logo = new_logo = logos[selectedImage]; artikel_geändert();
+					logoTextInput.setStyle("color",changed_color);
+				}
+			}			
+			protected function neuerArtikel_clickHandler(event:MouseEvent):void			{
+				neuerArtikel();
+			}
+			
+			private function linkclicked(ev:MouseEvent):void {
+				var request:URLRequest = new URLRequest(artikel.link);
+				navigateToURL(request, '_blank');
+			}
+			private function aktivChanged():void{
+				artikel_changed = true;
+				if (aktiv_checkbox.selected) {
+					gewinn_checkbox_changed = true; 
+					new_aktiv = 'assets/aktiv.png'; 
+				} else new_aktiv = 'assets/inaktiv.png';
+				artikel_geändert();
+			}
+			private function gewinnChanged():void {
+				artikel_changed = true;
+				gewinn_checkbox_changed=true;
+				if (gewinn_checkbox.selected) new_gewinnstatus = "assets/yes.png";
+				else new_gewinnstatus = "assets/no.png";
+				artikel_geändert();
+			}
+			private function artikel_geändert():void {
+				save_button.enabled = true;
+				//if( new_ID != orig_ID)  save_button.enabled = false;
+				delete_button.enabled = false;
+				artikel_changed = true;      
+				validate_Inputs("bla");
+			}
+			
+			private function imageClicked(ev:Event): void  {
+				bildercanvas.visible=false; 
+				eingabe_Panel.visible = true;
+				if ((imageSelection == "produkt")||(imageSelection == "produktbild_prev")) {
+					artikel.produktbild = new_produktbild = images[selectedImage]; artikel_geändert();
+					produktbildTextInput.setStyle("color",changed_color);  
+				}
+				if ((imageSelection == "logo")||(imageSelection == "logo_prev")) {
+					artikel.logo = new_logo = logos[selectedImage]; artikel_geändert();
+					logoTextInput.setStyle("color",changed_color);
+				}
+				if (ev.currentTarget != close_button) artikel_changed=true;
+			}
+			private function addurlbegin(o:String):String {
+				if (o != "") { return ( 'http://www.schachundmatt.net/neckermann/neck/'+o)}
+					else return "";
+			}
+		]]>
+	</fx:Script>
+	<Binding destination="selectedImage" source="galerie.selectedIndex" />
+	<mx:CurrencyFormatter 	id="formatter" precision="2" 
+							currencySymbol=" €" decimalSeparatorFrom=","
+							decimalSeparatorTo=","
+							useThousandsSeparator="false" alignSymbol="right"/>
+	
+	<!-- Place non-visual elements (e.g., services, value objects) here -->
+	
+	<mx:Fade id="fadeOut" duration="300"  alphaTo="0.0" effectEnd="{vorschau_Panel.visible=false}" />
+	<mx:Fade id="fadeIn" duration="300"  alphaTo="1.0" effectEnd="{vorschau_Panel.visible=true}"/>
+	
+	<mx:Fade id="glowfadeIn" duration="200"  alphaTo="1.0" />
+	<mx:Fade id="glowfadeOut" duration="200"  alphaTo="0" />
+	
+	<mx:Fade id="fadeOut2" duration="300"  alphaTo="0.0"  />
+	
+	<mx:Fade id="fadeOutslow" duration="2000"  alphaTo="0.0" startDelay="3000"/>
+	<mx:Glow id="GlowGreen" blurXFrom="0" blurXTo="255" blurYFrom="0" blurYTo="50" color="#00FF00"  duration="1000" effectEnd="{infoLabel.visible=false}" />
+	
+	<mx:BlurFilter id="blurF" blurX="8" blurY="8" quality="{BitmapFilterQuality.MEDIUM}" />
+	
+	<mx:HTTPService id="loginservice" url="UserService.php" showBusyCursor="true" method="POST" result="{onresult(event)}">
+		<mx:request xmlns="">
+			<usern>{user.text}</usern>
+			<passw>{pass.text}</passw>
+		</mx:request>
+	</mx:HTTPService>
+	<mx:HTTPService id="logoutservice" url="UserService.php" showBusyCursor="true" method="POST">
+		<mx:request xmlns="">
+			<usern>{user.text}</usern>
+		</mx:request>
+	</mx:HTTPService>
+	<mx:HTTPService id="loadImages" url="ImageLoader.php" showBusyCursor="true" method="POST" result="{resultImages(event)}">
+	</mx:HTTPService>
+	
+	<mx:HTTPService id="GewinnService" url="GewinnService.php" showBusyCursor="true" method="POST" result="{gewinnserviceresult(event)}" resultFormat="e4x" >
+		<mx:request xmlns="">
+			<gewinnaktion>{gewinnaktion}</gewinnaktion>
+			<Artikelkey>{artikel.Artikelkey}</Artikelkey>
+		</mx:request> 
+	</mx:HTTPService>       
+	
+	<mx:HTTPService id="ArtikelService" url="ArtikelService.php" showBusyCursor="true" method="POST" result="{artikelserviceresult(event)}" resultFormat="e4x" >
+		<mx:request xmlns="">
+			<aktion>{aktion}</aktion>
+			<Artikelkey>{artikel.Artikelkey}</Artikelkey>  
+			<artikel_ID>{artikel.ID}</artikel_ID>  
+			<artikel_headline>{artikel.headline}</artikel_headline>
+			<artikel_produktbild>{artikel.produktbild}</artikel_produktbild>
+			<artikel_logo>{artikel.logo}</artikel_logo>
+			<artikel_infotext>{artikel.infotext}</artikel_infotext>
+			<artikel_preis>{artikel.preis}</artikel_preis>
+			<artikel_link>{artikel.link}</artikel_link> 
+			<artikel_gewinn>{artikel.gewinn}</artikel_gewinn>
+			<artikel_gewinnmenge>{artikel.gewinnmenge}</artikel_gewinnmenge>
+			<artikel_gewinnzeitraum>{artikel.gewinnzeitraum}</artikel_gewinnzeitraum> 
+			<artikel_aktiv>{artikel.aktiv}</artikel_aktiv>
+		</mx:request>
+	</mx:HTTPService>
+	
+	<mx:HTTPService id="loadLogos" url="LogoLoader.php" showBusyCursor="true" method="POST" result="{resultLogos(event)}">
+	</mx:HTTPService>
+
+	<Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace valueObjects "valueObjects.*";
+		@namespace artikelservice "services.artikelservice.*";
+		@namespace containers "net.brandonmeyer.containers.*";
+		
+		containers|SuperPanel		{
+			actionAlpha:		 		0.75;
+			border-color: 				#ffffff;
+			title-style-name:			"mypanelTitle";
+			close-button-style-name:	"closeButton";
+			minimize-button-style-name:	"minimizeButton";
+			maximize-button-style-name:	"maximizeButton";
+			inactive-header-colors: 	#999999, #666666;
+			inactive-footer-colors: 	#ffffff, #ffffff;
+			inactive-shadow-distance:	1;
+			inactive-title-style-name:	"mypanelInactiveTitle";
+		}
+		.closeButton		{
+			icon: 						Embed(source="/../assets/icon_close_up.png");
+			up-icon: 					Embed(source="/../assets/icon_close_up.png");
+			over-icon: 					Embed(source="/../assets/icon_close_over.png");
+			down-icon: 					Embed(source="/../assets/icon_close_down.png");
+		}
+		.maximizeButton
+		{
+			icon: 						Embed(source="/../assets/icon_expand_up.png");
+			up-icon: 					Embed(source="/../assets/icon_expand_up.png");
+			over-icon: 					Embed(source="/../assets/icon_expand_over.png");
+			selected-over-icon: 		Embed(source="/../assets/icon_expand_over.png");
+			down-icon: 					Embed(source="/../assets/icon_expand_down.png");
+			selected-down-icon: 		Embed(source="/../assets/icon_expand_down.png");
+		}
+		.minimizeButton		{
+			icon: 						Embed(source="/../assets/icon_minimize_up.png");
+			up-icon: 					Embed(source="/../assets/icon_minimize_up.png");
+			over-icon: 					Embed(source="/../assets/icon_minimize_over.png");
+			selected-over-icon: 		Embed(source="/../assets/icon_minimize_over.png");
+			down-icon: 					Embed(source="/../assets/icon_minimize_down.png");
+			selected-down-icon: 		Embed(source="/../assets/icon_minimize_down.png");
+		}
+		.insetBox {
+			paddingBottom: 30;
+			paddingLeft: 30;
+			paddingRight: 30;
+			paddingTop: 30;	
+		} 
+		.headerStyle { 
+			fontSize: 10;
+			color: #FFFFFF;  
+		}	
+		.mypanelTitle
+		{
+			font-weight:				bold;
+			color: 						#FFFFFF;
+		}
+		.mypanelInactiveTitle
+		{
+			font-weight:				bold;
+			color: 						#DDDDDD;
+		}
+		global	{
+			chrome-color: #FFFFFF;
+		}
+	</Style>
+	<mx:Canvas horizontalCenter="0" height="677" width="1120" borderVisible="false" verticalScrollPolicy="off" horizontalScrollPolicy="off" >
+		
+		<!-- ++++++++++++++++++++++++++++++++++++++++++ DataGrid +++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+		
+		<mx:DataGrid width="1000" horizontalCenter="0" y="40" borderVisible="false" dropShadowVisible="false" blendMode="multiply"
+					  id="dataGrid" creationComplete="dataGrid_creationCompleteHandler(event)" dataProvider="{alleArtikel}"
+					 change="{artikel=dataGrid.selectedItem as XML; Artikel_selected();}" 
+					 height="600" focusColor="#7700FD" chromeColor="#BA0000" selectionColor="#727272" rollOverColor="#CBCDCD" 
+					 color="#6E0000" textAlign="center" fontFamily="Verdana" fontSize="10" fontWeight="normal" 
+					 paddingLeft="0" paddingTop="2" paddingRight="0" paddingBottom="2" variableRowHeight="true"
+					 contentBackgroundAlpha="0.47" verticalAlign="middle" wordWrap="false" alpha="1" includeInLayout="true" 
+					 accentColor="#C20000" alternatingItemColors="[#FFFFFF,#EEEEEE]" borderColor="#FFFFFF" borderAlpha="0" verticalGridLines="false">
+			<mx:columns>
+				<mx:DataGridColumn  color="#6E0000" headerText="Artikel-ID" headerStyleName="headerStyle" width="55" dataField="Artikelkey" 
+								   editable="false" fontSize="10" wordWrap="false" fontFamily="Arial" backgroundColor="#FFFFFF"/>
+				<mx:DataGridColumn color="#6E0000" headerText="Bezeichnung"  headerStyleName="headerStyle" width="100" dataField="headline" 
+								   fontFamily="Arial" fontSize="10" wordWrap="false" backgroundColor="#FFFFFF"/>
+				<mx:DataGridColumn color="#6E0000" headerText="Produktbildlink"  headerStyleName="headerStyle" width="100" dataField="produktbild"
+									fontSize="10" backgroundColor="#FCFCFC" wordWrap="false"/>
+				<mx:DataGridColumn color="#6E0000" headerText="Logolink"  headerStyleName="headerStyle" width="100" dataField="logo" fontSize="10" 
+								   backgroundColor="#FCFCFC" wordWrap="false"/>
+				<mx:DataGridColumn color="#6E0000" headerText="Beschreibungstext"  headerStyleName="headerStyle" width="140" dataField="infotext" 
+								   fontSize="10" wordWrap="false" backgroundColor="#FCFCFC"/>
+				<mx:DataGridColumn color="#6E0000" headerText="Artikelpreis"  headerStyleName="headerStyle" width="75" dataField="preis" 
+								   fontSize="10" backgroundColor="#FCFCFC" wordWrap="false"/>
+				<mx:DataGridColumn color="#6E0000" headerText="Link zur Artikelseite"  headerStyleName="headerStyle" width="120" 
+								   dataField="link" fontSize="10" backgroundColor="#FCFCFC" wordWrap="false"/>
+				<mx:DataGridColumn textAlign="center" color="#6E0000" headerText="Gewinn"  headerStyleName="headerStyle" width="50" 
+								   dataField="gewinn"  itemRenderer="mx.controls.Image" fontSize="10" backgroundColor="#FCFCFC" wordWrap="false"/>
+				<mx:DataGridColumn color="#6E0000" headerText="Gewinnanzahl"  headerStyleName="headerStyle" width="85" dataField="gewinnmenge" 
+								   fontSize="10" backgroundColor="#FCFCFC" wordWrap="false"/>
+				<mx:DataGridColumn color="#6E0000" headerText="Gewinndauer"  headerStyleName="headerStyle" width="85" dataField="gewinnzeitraum" 
+								   fontSize="10" backgroundColor="#FCFCFC" wordWrap="false"/>
+				<mx:DataGridColumn textAlign="center" color="#6E0000"  headerText="aktiv" headerStyleName="headerStyle" width="50" dataField="aktiv" 
+									itemRenderer="mx.controls.Image" fontSize="10" backgroundColor="#FCFCFC" wordWrap="false" />
+			</mx:columns> 
+		</mx:DataGrid>
+		
+		<!-- ++++++++++++++++++++++++++++++++++++++++++ EingabePanel +++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+		
+		<containers:SuperPanel hideEffect="{fadeOut}" showEffect="{fadeIn}"
+							   visible="false" 
+							   borderVisible="true" dropShadowVisible="true"  blendMode="normal"
+							   cornerRadius="1" borderAlpha="0.5" width="453" height="385" x="590" 
+							   y="270" backgroundColor="#9D9C9C" backgroundAlpha="0.14" 
+							   id="eingabe_Panel"
+							   title="{headlineTextInput.text}"
+							   allowDrag="true"
+							   allowResize="false"
+							   allowClose="true"
+							   allowMaximize="false"
+							   allowMinimize="true"
+							   resizeEffect="Resize"
+							   moveEffect="Move"
+							   close="{übersicht_buttonhandler(event)}"
+							   accentColor="#006212" titleBackgroundSkin="@Embed(source='assets/titlebackground.png')">
+		<mx:Canvas id="EingabeContainer" hideEffect="{fadeOut}" showEffect="{fadeIn} " visible="true" 
+				   borderVisible="false"  blendMode="normal"
+				   borderColor="#ba0000" cornerRadius="1" borderAlpha="0.5" width="450" height="350"  
+				   backgroundColor="#ffffff" backgroundAlpha="0" >
+			
+			<mx:Form defaultButton="{save_button}" y="0" borderVisible="false" paddingLeft="0"	paddingRight="0" paddingBottom="0" paddingTop="5"
+					 textAlign="left" blendMode="normal" dropShadowVisible="false" 
+					 contentBackgroundAlpha="0" color="#444444"   backgroundColor="#ffffff"  backgroundAlpha="0.9"   width="448" height="348">
+				
+				<mx:FormItem  id="iDTextInputForm" label="Artikel-ID" borderVisible="false" width="100%" paddingLeft="5">
+					<mx:TextInput 		id="iDTextInput" text="{new_ID}" 
+										color="#444444" editable="false" contentBackgroundColor="#FCFCFC" borderVisible="false" width="100" 
+										contentBackgroundAlpha="0.14" />
+				</mx:FormItem>	
+				<mx:FormItem id="headlineForm" label="Bezeichnung" borderVisible="false" width="100%" paddingLeft="5">
+					<mx:TextInput id="headlineTextInput" text="{new_headline}"  change="validate_Inputs('headline')"  
+								  contentBackgroundColor="#bbbbbb" contentBackgroundAlpha="0.5"
+								  color="#444444"  borderVisible="false" width="320"
+								  rollOver="{ headline_vorschau.alpha = 1}" 
+								  rollOut="{ headline_vorschau.alpha = 0}">
+					</mx:TextInput>
+				</mx:FormItem>
+				
+				<mx:FormItem id="produktbildForm" label="Produktbild" borderVisible="false" width="100%" paddingLeft="5">
+					<s:HGroup>
+						<mx:TextInput id="produktbildTextInput" text="{new_produktbild}" change="validate_Inputs('produktbild')"  
+									  contentBackgroundColor="#bbbbbb" contentBackgroundAlpha="0.51" 
+									  color="#444444" borderVisible="false" width="280"
+									  rollOver="{produktGlow_vorschau.alpha = 1}" 
+									  rollOut="{produktGlow_vorschau.alpha = 0}"/>
+						
+						<mx:Image id="produkt" source="assets/lupe.png" buttonMode="true" useHandCursor="true" 
+								  click="{Ordner='produktbilder/'; galerie.dataProvider=images; galerie_on(event)}" width="40" height="20" 
+								  rollOver="{produktGlow.alpha = 1}" 
+								  rollOut="{produktGlow.alpha = 0}">
+							<mx:filters>
+								<s:GlowFilter id="produktGlow"
+											  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+							</mx:filters>
+							</mx:Image>
+					</s:HGroup>
+				</mx:FormItem>	
+				<mx:FormItem id="logoForm" label="Logolink" borderVisible="false" width="100%" paddingLeft="5">
+					<s:HGroup>
+						<mx:TextInput id="logoTextInput" text="{new_logo}"   change="validate_Inputs('logo');"  contentBackgroundColor="#bbbbbb" 
+									  contentBackgroundAlpha="0.49" 
+									  color="#444444" borderVisible="false" width="280"
+									  rollOver="{ logoGlow_vorschau.alpha = 1}" 
+									  rollOut="{ logoGlow_vorschau.alpha = 0}">
+						</mx:TextInput>
+						<mx:Image id="logo"  source="assets/lupe.png" buttonMode="true" useHandCursor="true" 
+								  click="{Ordner='logos/'; galerie.dataProvider= logos; galerie_on(event)}" width="40" height="20" 
+								  rollOver="{ logoGlow.alpha = 1}" 
+								  rollOut="{ logoGlow.alpha = 0}">
+							<mx:filters>
+								<s:GlowFilter id="logoGlow"
+											  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+							</mx:filters>
+						</mx:Image>
+					</s:HGroup>
+				</mx:FormItem>
+				<mx:FormItem id="infotextForm" label="Infotext" borderVisible="false" width="100%" paddingLeft="5" >
+					<mx:TextArea id="infotextTextInput"  text="{new_infotext}" change="validate_Inputs('infotext');"  contentBackgroundColor="#bbbbbb" 
+								 contentBackgroundAlpha="0.49" 
+								 color="#444444" borderVisible="false" maxChars="255" height="48" width="320"
+								 rollOver="{ infotext_vorschau.alpha = 1}" 
+								 rollOut="{ infotext_vorschau.alpha = 0}"/>
+					</mx:FormItem>
+				<mx:FormItem id="preisForm" label="Preis" width="100%" borderVisible="false" backgroundColor="#6E0000" backgroundAlpha="0.0" paddingLeft="5">
+					<mx:TextInput id="preisTextInput" text="{new_preis}" change="validate_Inputs('preis');"  contentBackgroundColor="#bbbbbb" 
+								  contentBackgroundAlpha="0.49" 
+								  color="#444444" borderVisible="false" width="100"
+								  rollOver="{ preis_vorschau.alpha = 1}" 
+								  rollOut="{ preis_vorschau.alpha = 0}">
+					</mx:TextInput>
+				</mx:FormItem>
+				<mx:FormItem id="linkForm" label="Link zum Artikel" borderVisible="false" backgroundColor="#6E0000" backgroundAlpha="0.0" width="440" 
+							 	textAlign="left" paddingLeft="5">
+					<mx:TextInput id="linkTextInput" text="{new_link}"    change="validate_Inputs('link');"  contentBackgroundColor="#bbbbbb" 
+								  contentBackgroundAlpha="0.49" 
+								  color="#444444" borderVisible="false" width="320"/>
+				</mx:FormItem>
+				<mx:FormItem id="GewinnstatusForm" label="Gewinn" borderVisible="false" backgroundAlpha="0.0" width="100%" 
+							 backgroundColor="#6E0000" height="22" paddingLeft="5">
+					<s:HGroup width="88" contentBackgroundAlpha="0.0" height="19">
+						<mx:CheckBox id="gewinn_checkbox" change="gewinnChanged()" width="131"/>   
+						<mx:Label id="aktivCheckBox" text="aktiv" paddingLeft="5"  width="41" />
+						<mx:CheckBox id="aktiv_checkbox" change="aktivChanged()" width="38"/> 
+					</s:HGroup> 
+				</mx:FormItem>
+				<mx:FormItem  id="GewinnmengeForm" label="Gewinnmenge" width="100%" borderVisible="false" paddingLeft="5">
+					<s:HGroup width="80" >
+						<mx:TextInput id="gewinnmengeTextInput" enabled="{gewinn_checkbox.selected}" text="{new_gewinnmenge}"  
+								  change="validate_Inputs('gewinnmenge');"  
+								  contentBackgroundColor="#bbbbbb" contentBackgroundAlpha="0.49"	color="#444444"  borderVisible="false" width="40"/>
+						<mx:Label text="VE" fontSize="11" color="#888888" fontFamily="Verdana" />
+					</s:HGroup>
+				</mx:FormItem>
+				<mx:FormItem  id="GewinnzeitraumForm"  label="Gewinnzeitraum" borderVisible="false" width="100%" paddingLeft="5">
+					<s:HGroup width="80" >
+					<mx:TextInput id="gewinnzeitraumTextInput" enabled="{gewinn_checkbox.selected}" text="{new_gewinnzeitraum}"  
+								  change="validate_Inputs('gewinnzeitraum');"  
+								  contentBackgroundColor="#bbbbbb" contentBackgroundAlpha="0.49"	color="#444444" borderVisible="false" width="40"/>
+					<mx:Label text="Tag(e)" fontSize="11" color="#888888" fontFamily="Verdana" />
+					</s:HGroup>
+				</mx:FormItem>
+				
+			</mx:Form>
+			<s:Button id="save_button" label="Speichern" click="Save_clickHandler(event)" enabled="false" fontSize="10" fontFamily="Verdana"  color="#FFFFFF"
+					   chromeColor="#BA0000"  horizontalCenter="170" bottom="10"
+					   rollOver="{ save_buttonglow.alpha = 1}" 
+					   rollOut="{ save_buttonglow.alpha = 0}">
+				<s:filters>
+					<s:GlowFilter id="save_buttonglow"
+								  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" 
+								  inner="false"	knockout="false"/>
+				</s:filters>
+			</s:Button>
+			<s:Button label="Löschen" id="delete_button" click="delete_clickHandler(event)"  enabled="false" fontFamily="Verdana" 
+					   fontSize="10"  color="#FFFFFF"   chromeColor="#BA0000"  horizontalCenter="90" bottom="10" 
+					   rollOver="{ delete_buttonglow.alpha = 1}" 
+					   rollOut="{ delete_buttonglow.alpha = 0}">
+				<s:filters>
+					<s:GlowFilter id="delete_buttonglow"
+								  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" 
+								  inner="false"	knockout="false"/>
+				</s:filters>
+			</s:Button>
+			<!--<mx:Button id="artikelEinfügen_button" label="neuen Artikel anlegen" hideEffect="{fadeOut}" showEffect="{fadeIn}" color="#FFFFFF"
+			click="artikelEinfügen_clickHandler(event)" enabled="false" fontSize="10" fontFamily="Verdana" chromeColor="#6e0000"  />-->
+		
+		</mx:Canvas>
+		</containers:SuperPanel>
+		
+	<!-- ++++++++++++++++++++++++++++++++++++++++++ VORSCHAU +++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+		
+		<containers:SuperPanel id="vorschau_Panel" hideEffect="{fadeOut}" showEffect="{fadeIn}"
+							   visible="false"  width="493" height="355" 
+							   dropShadowVisible="true" backgroundColor="#FFFFFF" backgroundAlpha="0.8"
+							   borderVisible="false" cornerRadius="1" borderAlpha="0.49" 
+							   x="85" y="300"
+							   title="Vorschau"
+							   allowDrag="true"
+							   allowResize="false"
+							   allowClose="false"
+							   allowMaximize="false"
+							   allowMinimize="true"
+							   resizeEffect="Resize"
+							   moveEffect="Move"  titleBackgroundSkin="@Embed(source='assets/titlebackground.png')"
+							   >
+		<mx:Canvas id="vorschau_container"  visible="true"  width="490" height="320" hideEffect="{fadeOut}" showEffect="{fadeIn}"
+					 backgroundColor="#FFFFFF" backgroundAlpha="0.8"				   >
+			<mx:Image x="15" y="15" width="180" height="200" id="produktbild_prev" source="{new_produktbild}" buttonMode="true" useHandCursor="true" 
+					  click="{Ordner='produktbilder/'; galerie.dataProvider=images; galerie_on(event)}"
+					  rollOver="{ produktGlow_vorschau.alpha = 1}" 
+					  rollOut="{ produktGlow_vorschau.alpha = 0}">
+				<mx:filters>
+					<s:GlowFilter id="produktGlow_vorschau"
+								  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+				</mx:filters>
+			</mx:Image>
+			<mx:TextArea x="225" y="20" text="{new_headline}"  change="validate_Inputs('headline_prev')"  id="headline_prev"  borderVisible="false" 
+						  width="263" wordWrap="true" height="54" color="#710404" fontSize="21" 
+						  rollOver="{ headline_vorschau.alpha = 1}" 
+						  rollOut="{ headline_vorschau.alpha = 0}">
+				<mx:filters>
+					<s:GlowFilter id="headline_vorschau"
+								  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+				</mx:filters>
+			</mx:TextArea>
+			<mx:Image x="15" y="230" width="180" height="75" source="{new_logo}" id="logo_prev"  buttonMode="true" useHandCursor="true" 
+					  click="{Ordner='logos/'; galerie.dataProvider= logos; galerie_on(event)}" 
+					  rollOver="{ logoGlow_vorschau.alpha = 1}" 
+					  rollOut="{ logoGlow_vorschau.alpha = 0}">
+				<mx:filters>
+					<s:GlowFilter id="logoGlow_vorschau"
+								  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+				</mx:filters>
+			</mx:Image>
+			<mx:TextArea x="225" y="220" text="{new_preis}" width="213" height="42" change="validate_Inputs('preis_prev');" id="preis_prev" 
+						 color="#A40303" fontSize="25" fontWeight="bold" borderVisible="false" 
+				rollOver="{ preis_vorschau.alpha = 1}" 
+				rollOut="{ preis_vorschau.alpha = 0}">
+				<mx:filters>
+					<s:GlowFilter id="preis_vorschau"
+								  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+				</mx:filters>
+			</mx:TextArea>
+			<mx:TextArea x="225" y="85" width="263" height="125"  maxChars="255" change="validate_Inputs('infotext_prev');" text="{new_infotext}" id="infotext_prev" contentBackgroundColor="#FFFFFF" 
+						 color="#000000" borderVisible="false" maxWidth="263" wordWrap="true"
+				rollOver="{ infotext_vorschau.alpha = 1}" 
+				rollOut="{ infotext_vorschau.alpha = 0}">
+				<mx:filters>
+					<s:GlowFilter id="infotext_vorschau"
+								  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}"
+								  inner="false"	knockout="false"/>
+				</mx:filters>
+			</mx:TextArea>
+				
+			<mx:Image x="225" y="270" width="263" source="assets/linkpfeil.png" height="33" click="linkclicked(event)" useHandCursor="true" 
+					  buttonMode="true"/>
+		</mx:Canvas>
+		</containers:SuperPanel> 
+		
+		<!-- ++++++++++++++++++++++++++++++++++++++++++ Buttons +++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+		
+		<s:Button label="neuer Artikel" id="neuerArtikel_button" enabled="false" click="neuerArtikel_clickHandler(event); neuerArtikelpressed=true;" 
+				   color="#FFFFFF" visible="true"
+				   y="10" horizontalCenter="370" alpha="1" fontSize="10" fontFamily="Verdana" focusColor="#FF9C00" chromeColor="#ba0000"
+				   rollOver="{glowfadeIn.target = neuerArtikel_buttonglow; glowfadeIn.play();}" 
+				   rollOut="{glowfadeOut.target = neuerArtikel_buttonglow; glowfadeOut.play();}">
+			<s:filters>
+				<s:GlowFilter id="neuerArtikel_buttonglow"
+					color="0xFF0000" alpha="0"	blurX="6" blurY="6"	strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+			</s:filters>
+		</s:Button>
+		   
+			<s:Button label="Übersicht" id="uebersicht_button" enabled="false" click="{übersicht_buttonhandler(event);  dataGrid.selectedItem=null; }" 
+				   horizontalCenter="464" y="10" color="#FFFFFF" alpha="1" chromeColor="#BA0000" fontSize="10" fontFamily="Verdana" focusColor="#FF9C00"
+				   rollOver="{glowfadeIn.target = uebersicht_buttonglow; glowfadeIn.play();}" 
+				   rollOut="{glowfadeOut.target = uebersicht_buttonglow; glowfadeOut.play();}">
+			<s:filters>
+				<s:GlowFilter id="uebersicht_buttonglow"
+					color="0xFF0000" alpha="0"	blurX="6" blurY="6"	strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+			</s:filters>
+		</s:Button>
+		
+		<s:Button label="logout" id="logout_button" click="logoutklickhandler(event)" 
+				  color="#FFFFFF" visible="true"
+				  y="10.05" horizontalCenter="283" alpha="1" fontSize="10" fontFamily="Verdana" focusColor="#FF9C00" chromeColor="#ba0000"
+				  rollOver="{glowfadeIn.target = neuerArtikel_buttonglow; glowfadeIn.play();}" 
+				  rollOut="{glowfadeOut.target = neuerArtikel_buttonglow; glowfadeOut.play();}">
+			<s:filters>
+				<s:GlowFilter 
+							  color="0xFF0000" alpha="0"	blurX="6" blurY="6"	strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"	knockout="false"/>
+			</s:filters>
+		</s:Button>
+		<!-- ++++++++++++++++++++++++++++++++++++++++++ Login +++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+		
+		<mx:Canvas id="Loginbackground" hideEffect="fadeOut2" backgroundColor="#FFFFFF" alpha="0.8" visible="true" horizontalCenter="0" 
+				   height="670" width="1100" borderVisible="false">
+		</mx:Canvas>	
+		<mx:Panel id="LoginPanel" resizeEffect="Resize" width="447" height="200" backgroundColor="#610000" chromeColor="#B00000" horizontalCenter="0" 
+				  title="Login" color="#FFFFFF" 
+				  fontFamily="Verdana" backgroundAlpha="0.8" borderAlpha="1.0" borderVisible="false" cornerRadius="4" fontWeight="normal"
+				  y="80" textAlign="center" horizontalAlign="center" verticalAlign="middle" hideEffect="fadeOut2">
+			<s:HGroup width="416" height="54">
+				<s:VGroup width="200" height="55" textAlign="right">
+					<Label text="Benutzername:" textAlign="right" width="197"/>
+					<Label text="Passwort:" width="199"/>
+				</s:VGroup>
+				<s:VGroup width="200" height="53">
+					<mx:TextInput width="154" contentBackgroundColor="#D56363" height="18" id="user" textAlign="left"  fontSize="10"/>
+					<mx:TextInput width="154" contentBackgroundColor="#D56363" height="18" id="pass" displayAsPassword="true"  fontSize="10" textAlign="left"/>
+				</s:VGroup>
+			</s:HGroup>
+			<mx:Button label="Login" alpha="1" blendMode="difference" id="login" click="loginklickhandler(event)" horizontalCenter="0" y="125" labelPlacement="top" fontSize="10"/>
+		</mx:Panel >
+		
+		<mx:Label id="infoLabel" x="{dataGrid.x}" y="{dataGrid.y-20}" text="" fontSize="10" fontFamily="Verdana"  fontWeight="normal"
+				  visible="false" showEffect="GlowGreen" hideEffect="fadeOutslow" color="#028e19" />
+		
+		<mx:Canvas id = "bildercanvas" backgroundColor="#FFFFFF" backgroundAlpha="0.9" hideEffect="{fadeOut2}" showEffect="{fadeIn}" visible="false" 
+				   width="100%" height="100%" dropShadowVisible="true" 
+				   horizontalCenter="0" borderVisible="true" borderColor="#FE0000" cornerRadius="1" y="5" borderAlpha="0.49" 		>
+				<mx:TileList id="galerie" dataProvider="{images}" labelField="images" horizontalCenter="0" verticalCenter="0" borderVisible="false"
+							 width = "90%" height="90%" visible="true"  columnCount="4" buttonMode="true" useHandCursor="true"
+							 itemClick="{imageClicked(event)}"  rollOverColor="#A0A0A0">
+					<mx:itemRenderer>
+						<Component>
+							<mx:VBox width="230" height="230"
+									 paddingRight="0" paddingLeft="0"
+									 horizontalAlign="center">
+								<Image height="200" width="180"	source="{data}" />
+								<mx:Label text="{data}" height="20"  fontFamily="verdana" fontSize="11">
+									
+								</mx:Label>
+							</mx:VBox>
+						</Component>
+					</mx:itemRenderer>
+
+				</mx:TileList>
+					
+					<mx:Image id="close_button" source="assets/close.png" width="30" height="30" x = "{bildercanvas.width-40}" y="15" 
+						  click="imageClicked(event);" buttonMode="true" useHandCursor="true"  
+						  rollOver="{glowfadeIn.target = close_buttonglow; glowfadeIn.play();}" 
+						  rollOut="{glowfadeOut.target = close_buttonglow; glowfadeOut.play();}" >
+					<mx:filters>
+						<s:GlowFilter id="close_buttonglow"
+									  color="0xFF0000" alpha="0" blurX="6" blurY="6" strength="1" quality="{BitmapFilterQuality.MEDIUM}" inner="false"
+									  knockout="false"/>
+					</mx:filters>
+				</mx:Image>
+			</mx:Canvas>
+					
+		</mx:Canvas>
+		
+
+</Application>

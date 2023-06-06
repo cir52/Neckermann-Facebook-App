@@ -1,0 +1,58 @@
+/* CSS file */
+Application
+{
+	background-gradient-colors:	#666666, #333333;
+	theme-color:				#333333;
+	
+	padding-top:				0;
+	padding-bottom:				0;
+	padding-left:				0;
+	padding-right:				0;
+}
+
+CheckBox
+{
+    color: 						#ffffff;
+    text-selected-color: 		#999999;
+    text-roll-over-color: 		#cccccc;
+    fill-alphas: 				0.6, 0.4, 0.75, 0.65;
+    fill-colors: 				#cccccc, #999999, #ffffff, #eeeeee;
+}
+
+Button 
+{
+    corner-radius: 				2;
+    highlight-alphas: 			0.28, 0.3;
+    fill-alphas: 				1, 1, 1, 1;
+    fill-colors: 				#666666, #000000, #999999, #666666;
+    color: 						#ffffff;
+    text-roll-over-color: 		#ffffff;
+    text-selected-color: 		#ffffff;
+}
+
+
+.mypanelTitle
+{
+	font-weight:				bold;
+    color: 						#ffffff;
+}
+
+.mypanelInactiveTitle
+{
+	font-weight:				bold;
+    color: 						#bbbbbb;
+}
+
+.leftBox
+{
+	border-style:				solid;
+	border-sides:				right;
+	border-color:				#666666;
+	background-color:			#000000;
+	background-alpha:			0.6;
+	
+	padding-top:				20;
+	padding-bottom:				20;
+	padding-left:				20;
+	padding-right:				20;
+}

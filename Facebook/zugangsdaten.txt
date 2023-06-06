@@ -1,0 +1,26 @@
+Anwendungsnummer
+220581014621441
+
+API-Schlüssel
+026042788c5b30172314acb7dee76b4f
+
+Anwendungs-Geheimcode
+0d4bc648f390d35ff7f6e96abfdee32b
+
+Canvasseite
+http://apps.facebook.com/neckapptest/
+
+Canvas URL
+http://www.schachundmatt.net/neckermann/neck/
+
+Secure Canvas URL
+
+Canvas FBML/iframe
+Inlineframe
+
+Deine E-Mail-Adresse
+facebook@wurmzeichen.de
+
+Support-E-Mail-Adresse
+facebook@wurmzeichen.de
+
